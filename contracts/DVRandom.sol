@@ -1,9 +1,12 @@
 //SPDX-License-Identifier:MIT
-pragma solidity ^0.8.4;
+pragma solidity >=0.8.8;
 
-import "@openzeppelin/contracts/utils/Address.sol";
-import "@openzeppelin/contracts/utils/math/SafeCast.sol";
-import "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
+import "openzeppelin-contracts/contracts/utils/Address.sol";
+import "openzeppelin-contracts/contracts/utils/math/SafeCast.sol";
+import "openzeppelin-contracts/contracts/utils/cryptography/ECDSA.sol";
+import "openzeppelin-contracts/contracts/utils/introspection/ERC165.sol";
+import "openzeppelin-contracts/contracts/access/Ownable.sol";
+import "openzeppelin-contracts/contracts/security/ReentrancyGuard.sol";
 import "./DVList.sol";
 
 
@@ -30,7 +33,7 @@ uint32 constant VRF_MAX_CAMPAIGN_RECORDS_X_ISLAND = 6;
 uint constant VRF_GATHEING_SIGNED_SOLUTIONS_INTERVAL = 2 hours;
 uint constant VRF_GATHEING_REVEALED_SOLUTIONS_INTERVAL = 1 days;
 
-uint256 constant VRF_MIN_AVAILABLE_RECORDS = 8;
+uint32 constant VRF_MIN_AVAILABLE_RECORDS = 8;
 
 // VRF state flags
 uint32 constant VRF_RECORD_STATE_AVAILABLE = INVALID_INDEX32;
@@ -326,8 +329,8 @@ struct VRFSignedRecord
    address pk_owner;/// public key of the owner of the Island   
    
    uint256 campaingID;// Current campaing where this record has been originated
-   uint32 island_campaign_index;// index on the current campaign that the island is getting involved
-   uint32 island_record_index;// index on the current record belonging to the island
+   uint32 island_campaign_index;// index on the campaign where the island has commited this record
+   uint32 island_record_index;// index on the current record belonging to the island in the ownership collection
 
    /**
     * Index of the proposal. Also reveals the state of the record when being played:
@@ -377,8 +380,8 @@ struct VRFIslandInfo
    /// Last campaign where this Island has inserted signed records
    uint256 last_campaingID;
 
-   /// index on the current record belonging to the island
-   uint32 last_record_index;
+   /// index on the current campaign record belonging to the island
+   uint32 last_campaign_record_index;
 
 
    /// Index in signed_records_x_island collection where the available records could be counted
@@ -386,7 +389,7 @@ struct VRFIslandInfo
    uint32 available_record_listing_index;
 
 
-   /// current proposal record. 0 If not proposal yet
+   /// current proposal record. 0 If not proposal has made yet
    uint256 current_proposal;
 
    /**
@@ -423,12 +426,6 @@ struct VRFLeadboard
 
    /// third place leadboard record. 0 if not assigned yet
    uint256 third_place;
-
-
-   /**
-    * Last winner island ID
-    */
-   uint256 last_winner;
 
    VRFCircle first_circle;
    VRFCircle second_circle;
@@ -513,7 +510,6 @@ struct VRFDAOState
    DVOwnershipArray signed_records_x_island;
 
 
-
    /**
     * Proposals are identifiers to signed records
     */
@@ -555,7 +551,13 @@ library VRFDAOLib
       leadboard.third_circle.radius = leadboard.second_circle.radius;
    }
 
-   function insert_lb_candidate(VRFLeadboard storage leadboard, uint256 record_candidate, int64 radius, int64 cx, int64 cy) internal returns(bool)
+
+   /**
+    * Return position on the leaderboard.
+    * Returns the Leaderboard ranking (1 -> first place; 2 -> second; 3 -> third).
+    * Returns 0 if proposal couldn't be ranked. 
+    */
+   function insert_lb_candidate(VRFLeadboard storage leadboard, uint256 record_candidate, int64 cx, int64 cy, int64 radius) internal returns(int32)
    {
       if(leadboard.first_place == 0)
       {
@@ -563,7 +565,7 @@ library VRFDAOLib
          leadboard.first_circle.x = cx;
          leadboard.first_circle.y = cy;
          leadboard.first_circle.radius = radius;
-         return true;
+         return 1;
       }
 
       if(leadboard.first_circle.radius < radius)
@@ -574,7 +576,7 @@ library VRFDAOLib
          leadboard.first_circle.x = cx;
          leadboard.first_circle.y = cy;
          leadboard.first_circle.radius = radius;
-         return true;
+         return 1;
       }
 
       if(leadboard.second_place == 0)
@@ -583,7 +585,7 @@ library VRFDAOLib
          leadboard.second_circle.x = cx;
          leadboard.second_circle.y = cy;
          leadboard.second_circle.radius = radius;
-         return true;
+         return 2;
       }
       else if(leadboard.second_circle.radius < radius) 
       {
@@ -592,7 +594,7 @@ library VRFDAOLib
          leadboard.second_circle.x = cx;
          leadboard.second_circle.y = cy;
          leadboard.second_circle.radius = radius;
-         return true;
+         return 2;
       }
 
 
@@ -602,10 +604,10 @@ library VRFDAOLib
          leadboard.third_circle.x = cx;
          leadboard.third_circle.y = cy;
          leadboard.third_circle.radius = radius;
-         return true;
+         return 3;
       }
 
-      return false;
+      return 0;
    }
 
    function get_last_seed(VRFDAOState storage daostate) internal view returns(uint256)
@@ -629,6 +631,9 @@ library VRFDAOLib
       int64 cx1 = daostate.leadboard.first_circle.x;
       int64 cy1 = daostate.leadboard.first_circle.y;
       int64 radius1 = daostate.leadboard.first_circle.radius;
+      
+      VRFSignedRecord storage _record1 = daostate.signed_records[first_place];
+      address _pk_onwer1 = _record1.pk_owner;// address combine the next random number
 
       uint256 base_rnd = next_rnd_number(daostate);
 
@@ -638,22 +643,25 @@ library VRFDAOLib
       if(second_place == 0)
       {
          // calculate random with only the winner
-         bytes32 retbytes00 = keccak256(abi.encode(base_rnd, first_place));
-         bytes32 retbytes01 = keccak256(abi.encode(cx1, cy1, radius1));
-         new_seed = uint256(keccak256(abi.encodePacked(retbytes00, retbytes01)));
+         bytes32 retbytes00 = keccak256(abi.encodePacked(base_rnd, first_place));
+         bytes32 retbytes01 = keccak256(abi.encodePacked(cx1, cy1, radius1, _pk_onwer1));
+         new_seed = uint256(keccak256(abi.encodePacked(retbytes00 , retbytes01)));
       }
       else
-      {
+      {         
          int64 cx2 = daostate.leadboard.second_circle.x;
          int64 cy2 = daostate.leadboard.second_circle.y;
          int64 radius2 = daostate.leadboard.second_circle.radius;
 
+         VRFSignedRecord storage _record2 = daostate.signed_records[second_place];
+         address _pk_onwer2 = _record2.pk_owner;// address combine the next random number
+
          uint256 third_place = daostate.leadboard.third_place;
          if(third_place == 0)
          {
-            bytes32 retbytes10 = keccak256(abi.encode(base_rnd, first_place, second_place));
-            bytes32 retbytes11 = keccak256(abi.encode(cx1, cy1, radius1));
-            bytes32 retbytes12 = keccak256(abi.encode(cx2, cy2, radius2));
+            bytes32 retbytes10 = keccak256(abi.encodePacked(base_rnd, first_place, second_place));
+            bytes32 retbytes11 = keccak256(abi.encodePacked(cx1, cy1, radius1, _pk_onwer2));
+            bytes32 retbytes12 = keccak256(abi.encodePacked(cx2, cy2, radius2, _pk_onwer1));
             new_seed = uint256(keccak256(abi.encodePacked(retbytes10, retbytes11, retbytes12)));
          }
          else
@@ -662,10 +670,13 @@ library VRFDAOLib
             int64 cy3 = daostate.leadboard.third_circle.y;
             int64 radius3 = daostate.leadboard.third_circle.radius;
 
-            bytes32 retbytes20 = keccak256(abi.encode(base_rnd, first_place, second_place, third_place));
-            bytes32 retbytes21 = keccak256(abi.encode(cx1, cy1, radius1));
-            bytes32 retbytes22 = keccak256(abi.encode(cx2, cy2, radius2));
-            bytes32 retbytes23 = keccak256(abi.encode(cx3, cy3, radius3));
+            VRFSignedRecord storage _record3 = daostate.signed_records[third_place];
+            address _pk_onwer3 = _record3.pk_owner;// address combine the next random number
+
+            bytes32 retbytes20 = keccak256(abi.encodePacked(base_rnd, first_place, second_place, third_place));
+            bytes32 retbytes21 = keccak256(abi.encodePacked(cx1, cy1, radius1, _pk_onwer3));
+            bytes32 retbytes22 = keccak256(abi.encodePacked(cx2, cy2, radius2, _pk_onwer1));
+            bytes32 retbytes23 = keccak256(abi.encodePacked(cx3, cy3, radius3, _pk_onwer2));
             new_seed = uint256(keccak256(abi.encodePacked(retbytes20, retbytes21, retbytes22, retbytes23)));
          }
       }
@@ -724,10 +735,17 @@ library VRFDAOLib
                daostate.phase_due_time = blocktime + daostate.gathering_revealed_solutions_interval;
             }
          }
+         else if(daostate.proposals.count >= daostate.max_campaign_proposals) // check if has reached the number of proposals for the next phase
+         {
+            // move to the next phase for reveals
+            daostate.process_status = eVRF_CAMPAIGN_STATUS.VRFCAMPAIGN_GATHERING_REVEALS;
+            daostate.phase_due_time = blocktime + daostate.gathering_revealed_solutions_interval;
+         }
       }
       else if(daostate.process_status == eVRF_CAMPAIGN_STATUS.VRFCAMPAIGN_GATHERING_REVEALS)
       {
-         if(blocktime > daostate.phase_due_time)
+         // All proposals have been reveal? or the due time has reached?
+         if(blocktime > daostate.phase_due_time || daostate.proposals.count == 0)
          {
             // mark the finalization phase
             daostate.process_status = eVRF_CAMPAIGN_STATUS.VRFCAMPAIGN_CLOSING;
@@ -751,41 +769,24 @@ library VRFDAOLib
       check_campaign_phase(daostate, blocktime);
       return new_campaignID;
    }
-   
-   
 
-   function calc_record_params_hash(uint256 campaingID, uint32 island_campaign_index, int64 cx, int64 cy, int64 radius) internal pure returns(bytes32)
+   /**
+    * This function must be called when creating an Island from the main contract
+    */
+   function register_island(VRFDAOState storage daostate, uint256 island_tokenID) internal
    {
-      return keccak256(abi.encodePacked(campaingID, island_campaign_index, cx,  cy, radius));
-   }
-
-   function is_valid_record_signature(VRFDAOState storage daostate, uint256 recordID, address pk_owner, int64 cx, int64 cy, int64 radius) internal view returns(bool)
-   {
-      VRFSignedRecord storage record = daostate.signed_records[recordID];
-
-      uint256 campaingID = record.campaingID;
-      if(campaingID == 0)
-      {
-         return false;// record not assigned yet
-      }
-
-      if(record.pk_owner != pk_owner) return false;
-
+      VRFIslandInfo storage fetch_island = daostate.islands_info[island_tokenID];
       
-      uint32 island_campaign_index = record.island_campaign_index;
-
-      bytes32 chash = calc_record_params_hash(campaingID, island_campaign_index, cx, cy, radius);
-      bytes32 eth_digest = ECDSA.toEthSignedMessageHash(chash);// adapt to Ethereum signature format
-
-      (address recovered, ECDSA.RecoverError error) = ECDSA.tryRecover(eth_digest, record.signature);
-
-      if (error == ECDSA.RecoverError.NoError && recovered == pk_owner) {
-         return true;
-      }
-
-      return false;
+      // Every Island starts with a base reputation. If faulted, it sets to 0,
+      fetch_island.reputation = 1;
+      fetch_island.bonus_credits = 0;
+      fetch_island.max_records_x_campaign = 1;
+      fetch_island.last_campaingID = 0;
+      fetch_island.last_campaign_record_index = 0;
+      fetch_island.available_record_listing_index = 0;
+      fetch_island.current_proposal = 0;
+      fetch_island.bounty_balance = 0;
    }
-
 
    /**
     * This method needs to be called by client before attempting to insert new signed records on current campaign.
@@ -813,7 +814,7 @@ library VRFDAOLib
       // Island has been already in this campaign
 
       /// Check Island record limit      
-      uint32 next_index = fetch_island.last_record_index + 1;
+      uint32 next_index = fetch_island.last_campaign_record_index + 1;
       if(fetch_island.max_records_x_campaign <= next_index)
       {
          // reached limit
@@ -829,7 +830,7 @@ library VRFDAOLib
    function insert_signed_record_base(VRFDAOState storage daostate,
                                       uint256 island_tokenID,
                                       address pk_owner,
-                                      bytes calldata signature) internal returns(uint256, bool)
+                                      bytes memory signature) internal returns(uint256, bool)
    {
 
       VRFIslandInfo storage fetch_island = daostate.islands_info[island_tokenID];
@@ -846,7 +847,7 @@ library VRFDAOLib
       if(last_campaign_ref == current_campaign) // element has been already in this campaign
       {
          // update index
-         next_index = fetch_island.last_record_index + 1;        
+         next_index = fetch_island.last_campaign_record_index + 1;        
 
          /// Check Island record limit      
          if(fetch_island.max_records_x_campaign <= next_index)
@@ -871,7 +872,7 @@ library VRFDAOLib
 
       // reference newly created record campaign on Island
       fetch_island.last_campaingID = current_campaign;
-      fetch_island.last_record_index = next_index;
+      fetch_island.last_campaign_record_index = next_index;
 
       // Reference in the Island inventory
       newrecord_obj.island_record_index = DVOwnershipArrayUtil.insert(daostate.signed_records_x_island, island_tokenID, newrecordID);
@@ -887,7 +888,7 @@ library VRFDAOLib
                                   uint256 island_tokenID,                                  
                                   address pk_owner,
                                   uint256 fee,
-                                  bytes calldata signature) internal returns(uint256)
+                                  bytes memory signature) internal returns(uint256)
    {
       require(fee >= daostate.record_storage_fee, "Not enough paid for storage");
       (uint256 newrecordID, bool success) = insert_signed_record_base(daostate, island_tokenID, pk_owner, signature);
@@ -908,7 +909,7 @@ library VRFDAOLib
                                           uint blocktime, // for calculating expiration time
                                           uint256 island_tokenID,
                                           address pk_owner,
-                                          bytes calldata signature) internal returns(uint256)
+                                          bytes memory signature) internal returns(uint256)
    {  
       require(daostate.process_status == eVRF_CAMPAIGN_STATUS.VRFCAMPAIGN_PROCESSING_PROBLEM, "Cannot get the benefit of problem solving bonus");
 
@@ -939,7 +940,7 @@ library VRFDAOLib
    function insert_record_by_bonus(VRFDAOState storage daostate, 
                                     uint blocktime, // for calculating expiration time
                                     uint256 island_tokenID, address pk_owner,
-                                    bytes calldata signature) internal returns(uint256)
+                                    bytes memory signature) internal returns(uint256)
    {
       VRFIslandInfo storage fetch_island = daostate.islands_info[island_tokenID];
       uint256 bonus = fetch_island.bonus_credits;  
@@ -954,33 +955,109 @@ library VRFDAOLib
       return newrecordID;
    }
 
-   /**
-    * This function must be called when creating an Island from the main contract
-    */
-   function register_island(VRFDAOState storage daostate, uint256 island_tokenID) internal
+
+   function calc_record_params_hash(uint256 islandID, uint256 recordID, uint256 campaingID, uint32 island_campaign_index, int64 cx, int64 cy, int64 radius) internal pure returns(bytes32)
    {
-      VRFIslandInfo storage fetch_island = daostate.islands_info[island_tokenID];
-      
-      // Every Island starts with a base reputation. If faulted, it sets to 0,
-      fetch_island.reputation = 1;
-      fetch_island.bonus_credits = 0;
-      fetch_island.max_records_x_campaign = 1;
-      fetch_island.last_campaingID = 0;
-      fetch_island.last_record_index = 0;
-      fetch_island.available_record_listing_index = 0;
-      fetch_island.current_proposal = 0;
-      fetch_island.bounty_balance = 0;
+      return keccak256(abi.encodePacked(islandID, recordID, campaingID, island_campaign_index, cx,  cy, radius));
    }
 
-   function make_proposal(VRFDAOState storage daostate, address pk_owner, uint blocktime) internal
+   function is_valid_record_signature(VRFDAOState storage daostate, uint256 recordID, address pk_owner, int64 cx, int64 cy, int64 radius) internal view returns(bool)
    {
+      VRFSignedRecord storage record = daostate.signed_records[recordID];
 
+      if(record.pk_owner != pk_owner || pk_owner == address(0)) return false;
+
+      uint256 islandID = record.island_tokenID;
+      uint256 campaingID = record.campaingID;
+      uint32 island_campaign_index = record.island_campaign_index;
+
+      bytes32 chash = calc_record_params_hash(islandID, recordID, campaingID, island_campaign_index, cx, cy, radius);
+      bytes32 eth_digest = ECDSA.toEthSignedMessageHash(chash);// adapt to Ethereum signature format
+
+      (address recovered, ECDSA.RecoverError error) = ECDSA.tryRecover(eth_digest, record.signature);
+
+      if (error == ECDSA.RecoverError.NoError && recovered == pk_owner) {
+         return true;
+      }
+      return false;
+   }
+
+
+   /**
+    * This function validates if record belongs to Island and is allowed to be used
+    */
+   function commit_proposal(VRFDAOState storage daostate, address pk_owner, uint256 recordID, uint blocktime) internal
+   {
+      /******** Validating Proposal *************/
+      require(daostate.process_status == eVRF_CAMPAIGN_STATUS.VRFCAMPAIGN_GATHERING_PROPOSALS, "Cannot commit proposals at this time");
+
+      require(recordID != uint256(0) && pk_owner != address(0), "Invalid ownership parameters");
+
+      VRFSignedRecord storage record = daostate.signed_records[recordID];
+      // Does this record not being played yet?
+      require(record.proposal_index == VRF_RECORD_STATE_AVAILABLE, "Record has already used");
+
+      require(record.pk_owner == pk_owner, "This owner cannot reveal this signed record");
+
+      uint256 islandID = record.island_tokenID;
+      require(islandID != uint256(0), "record not assigned to an Island yet");
+
+      // Verify if the Island is allowed to participate
+      VRFIslandInfo storage fetch_island = daostate.islands_info[islandID];
+      require(fetch_island.reputation > 0, "Island has lost its reputation");
+
+      require(fetch_island.current_proposal == 0, "Island has already commited a proposal");
+
+      // check the campaign number
+      uint256 campaingID = record.campaingID;
+      require(campaingID <= fetch_island.last_campaingID, "Inconsistent campaign registering for record");
+
+      // Time frame for the campaign proposals
+      require(campaingID < daostate.current_campaingID, "This record cannot be used at the current campaign");
+
+      uint32 island_record_index = record.island_record_index;
+
+      // check the ownership index
+      uint32 island_available_rlisting_index = fetch_island.available_record_listing_index;
+      require(island_record_index >= island_available_rlisting_index, "Inconsistent registering of record on Island");
+
+      uint num_ownerships = DVOwnershipArrayUtil.list_count(daostate.signed_records_x_island, islandID);
+      require(island_record_index < num_ownerships, "Inconsistent registering of record on Island");
+
+      uint256 _record_ref = DVOwnershipArrayUtil.get(daostate.signed_records_x_island, islandID, island_record_index);
+      require(_record_ref == recordID, "Inconsistent registering of record on Island");
+
+      /******** End Validating Proposal *************/
+ 
+      /******** Registering Proposal *************/      
+      record.proposal_index = DVStackArrayUtil.insert(daostate.proposals, recordID);
+      daostate.available_records--; // discount this record
+
+      // update island referencing
+      fetch_island.current_proposal = recordID;
+      if(island_record_index > island_available_rlisting_index)
+      {
+         // change records indexes
+         uint256 bottom_record_ID = DVOwnershipArrayUtil.get(daostate.signed_records_x_island, islandID, island_available_rlisting_index);
+         VRFSignedRecord storage bottom_record = daostate.signed_records[bottom_record_ID];
+         bottom_record.island_record_index = island_record_index;
+         record.island_record_index = island_available_rlisting_index;
+
+         // move element to bottom position
+         DVOwnershipArrayUtil.swap_elements(daostate.signed_records_x_island, islandID, island_record_index, island_available_rlisting_index);         
+      }
+
+      // advance position
+      fetch_island.available_record_listing_index = island_available_rlisting_index + 1;
+
+      // check campaign phase
+      check_campaign_phase(daostate, blocktime);
    }
 
    /**
     * This is called on revelations
     */
-   function remove_proposal(VRFDAOState storage daostate, uint32 index, bool revealed_success) internal
+   function _remove_proposal(VRFDAOState storage daostate, uint32 index, bool revealed_success) internal
    {
       assert(index < daostate.proposals.count);
 
@@ -999,4 +1076,215 @@ library VRFDAOLib
    }
 
 
+   /**
+    * Returns the Leaderboard ranking (1 -> first place; 2 -> second; 3 -> third). 
+    * Returns 0 if proposal couldn't be ranked but earns reputation.
+    * And -1 if is a malformed transaction or wrong answer, thus damages reputation of the Island.
+    */
+   function reveal_proposal(VRFDAOState storage daostate, uint256 recordID, address pk_owner, int64 cx, int64 cy, int64 radius) internal returns(int32)
+   {
+            /******** Validating Proposal *************/
+      require(daostate.process_status == eVRF_CAMPAIGN_STATUS.VRFCAMPAIGN_GATHERING_REVEALS, "Cannot reveal proposals at this time");
+
+      require(recordID != uint256(0) && pk_owner != address(0), "Invalid ownership parameters");
+
+      VRFSignedRecord storage record = daostate.signed_records[recordID];
+
+      require(record.pk_owner == pk_owner, "Owner address must match the record ownership");
+
+      // Does this record already present in the reveal process?
+      uint32 proposal_index = record.proposal_index;
+      require(proposal_index != VRF_RECORD_STATE_AVAILABLE &&
+              proposal_index != VRF_RECORD_STATE_REVEALED &&
+              proposal_index != VRF_RECORD_STATE_FAULTED, "Record is not a proposal");
+
+
+      // valdiating record signature
+      bool isvalid = is_valid_record_signature(daostate, recordID, pk_owner, cx, cy, radius);
+      
+      uint256 islandID = record.island_tokenID;
+      // determine island reputation
+      int32 score = 0;
+
+      VRFIslandInfo storage fetch_island = daostate.islands_info[islandID];
+      fetch_island.current_proposal = 0;// clean proposal
+      if(isvalid)
+      {
+         // check circle solution
+         // cannot touch borders of the space
+         int64 space_area_size = daostate.problem.problem_area_size;
+         int64 ext_x = cx + radius;
+         int64 ext_y = cy + radius;
+         if((cx < radius) || 
+            (cy < radius) ||
+            (ext_x > space_area_size) ||
+            (ext_y > space_area_size))
+         {
+            isvalid = false;
+         }
+         else
+         {
+            // verify collisions with other circles
+            isvalid = VRFProblemLib.has_intersections(daostate.problem, cx, cy, radius) == true ? false : true;
+         }
+      }
+
+      // check valid response, and leadboard candidates
+      if(isvalid == false)
+      {
+         // punish island and confiscate its balance         
+         fetch_island.reputation = 0;
+         daostate.accumulated_fee_bounty += fetch_island.bounty_balance;
+         fetch_island.bounty_balance = 0;
+         score = -1;
+      }
+      else
+      {
+         // earn reputation
+         fetch_island.reputation++;
+         // determine new capacity
+         uint32 newcapacity = fetch_island.reputation / VRF_CAMPAIGN_RECORDS_LIMIT_RATE;
+         if(fetch_island.max_records_x_campaign < newcapacity)
+         {
+            fetch_island.max_records_x_campaign = newcapacity;
+         }
+         
+         // update leaderboard
+         score = insert_lb_candidate(daostate.leadboard, recordID, cx, cy, radius);
+      }
+
+      // remove proposal
+      _remove_proposal(daostate, proposal_index, isvalid);
+
+      return score; 
+   }
+
+
+   /**
+    * This must be called after a reveal and after updating a campaign status;
+    * @code
+    * check_campaign_phase(daostate, blocktime);
+    * @endcode
+    */
+   function finalize_campaign(VRFDAOState storage daostate) internal returns(bool)
+   {
+      assert(daostate.process_status == eVRF_CAMPAIGN_STATUS.VRFCAMPAIGN_CLOSING);
+
+      // check if there is a winner
+      uint256 first_place = daostate.leadboard.first_place;
+      bool sucessful = true;
+      if(first_place == 0)
+      {
+         // No winners on this round, restart the campaign
+         sucessful = false;
+
+         reset_campaign(daostate);
+      }
+      else
+      {
+         VRFCampaignTask storage campaign_obj = daostate.campaign_tasks[daostate.current_campaingID];
+
+         // reward participants
+         VRFSignedRecord storage record_obj1 = daostate.signed_records[first_place];
+         VRFIslandInfo storage fetch_island1 = daostate.islands_info[record_obj1.island_tokenID];
+
+         // first place obtain campaign bounty plus VRFDAO fees bounty
+         fetch_island1.bounty_balance += campaign_obj.bounty + daostate.accumulated_fee_bounty;
+
+         // clear campaign and bounty balance
+         campaign_obj.bounty = 0;         
+         // clear fees bounty
+         daostate.accumulated_fee_bounty = 0;
+
+         // second and third places obtain bonus credits
+         uint256 second_place = daostate.leadboard.second_place;
+         if(second_place != 0)
+         {
+            VRFSignedRecord storage record_obj2 = daostate.signed_records[second_place];
+            VRFIslandInfo storage fetch_island2 = daostate.islands_info[record_obj2.island_tokenID];
+            fetch_island2.bonus_credits += 2;
+            uint256 third_place = daostate.leadboard.third_place;
+            if(third_place != 0)
+            {
+               VRFSignedRecord storage record_obj3 = daostate.signed_records[third_place];
+               VRFIslandInfo storage fetch_island3 = daostate.islands_info[record_obj3.island_tokenID];
+               fetch_island3.bonus_credits += 1;
+            }
+         }
+         
+         // generate number
+         configure_new_seed_rnd(daostate);
+         campaign_obj.random_seed = next_rnd_number(daostate);
+         
+
+         // attempts to start a new campaign
+         bool move_next = could_start_campaign(daostate);
+         if(move_next)
+         {
+            // advance to the next problem solving phase
+               daostate.current_campaingID++;
+               daostate.process_status = eVRF_CAMPAIGN_STATUS.VRFCAMPAIGN_PROCESSING_PROBLEM;
+         }
+         else
+         {
+            // put status as idle
+            daostate.process_status = eVRF_CAMPAIGN_STATUS.VRFCAMPAIGN_IDLE;
+         }
+
+         sucessful = true;
+      }
+
+      // punish leftovers
+      uint32 proposalcount = daostate.proposals.count;
+      for(uint32 i = 0; i < proposalcount; i++)
+      {
+         uint256 fault_recordID = DVStackArrayUtil.get(daostate.proposals, i);
+         VRFSignedRecord storage fault_record_obj = daostate.signed_records[fault_recordID];
+         
+         fault_record_obj.proposal_index = VRF_RECORD_STATE_FAULTED;
+
+         // punish Island
+         VRFIslandInfo storage fault_island_obj = daostate.islands_info[fault_record_obj.island_tokenID];
+         fault_island_obj.reputation = 0;
+         daostate.accumulated_fee_bounty += fault_island_obj.bounty_balance;
+         fault_island_obj.bounty_balance = 0;
+      }
+
+      return sucessful;
+   }
+}
+
+contract VRFDAO is Ownable, ReentrancyGuard
+{
+   using Address for address;
+   using DVStackArrayUtil for DVStackArray;   
+
+   event NewRecordSigned(address owner, uint256 island_id, uint256 record_id);
+   event ProposalComitted(uint256 target_campaign, uint256 record_id);
+
+
+   // Attributes
+   VRFDAOState private _dao_state;
+
+   constructor()
+   {
+      _dao_state.process_status = eVRF_CAMPAIGN_STATUS.VRFCAMPAIGN_IDLE;
+      _dao_state.current_campaingID = 0;
+      _dao_state.campaing_count = 0;
+      _dao_state.current_recordID = 0;
+      _dao_state.record_storage_fee = 0;
+      _dao_state.available_records = 0;
+      _dao_state.accumulated_fee_bounty = VRF_RECORD_STORAGE_FEE;
+      _dao_state.gathering_signed_solutions_interval = VRF_GATHEING_SIGNED_SOLUTIONS_INTERVAL;
+      _dao_state.gathering_revealed_solutions_interval = VRF_GATHEING_REVEALED_SOLUTIONS_INTERVAL;            
+      _dao_state.max_campaign_proposals = VRF_MAX_CAMPAIGN_RECORDS_X_ISLAND;
+      _dao_state.minimum_records_for_campaign = VRF_MIN_AVAILABLE_RECORDS;
+
+
+      // initialize parameters of daostate
+      uint256 initial_seed = uint256(keccak256(abi.encodePacked(block.timestamp, _msgSender())));
+      VRFProblemLib.init(_dao_state.problem, initial_seed);
+
+      
+   }
 }
