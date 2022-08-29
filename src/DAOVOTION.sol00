@@ -204,7 +204,7 @@ library StarCalc
     /**
      * Bonding curve for calculating the price of an Island depending of the emission rate.
      */
-    function curve_floor_price(StarPricing storage starinfo, uint32 star_prestige, uint32 island_count) internal view returns(uint256)
+    function curve_floor_price(StarPricing memory starinfo, uint32 star_prestige, uint32 island_count) internal view returns(uint256)
     {
         uint256 scaled_island = uint256(island_count) * DV_PRESTIGE_ISLAND_DIVISOR;
         uint256 scaled_curve_factor = scaled_island / uint256(star_prestige);

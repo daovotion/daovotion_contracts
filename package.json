@@ -3,26 +3,26 @@
   "version": "1.0.0",
   "description": "",
   "main": "index.js",
+  "directories": {
+    "lib": "lib",
+    "test": "test"
+  },
   "scripts": {
-    "test": "ts-mocha \"./test/mytest.ts\""
+    "typerun": "ts-node typechain.task.ts",
+    "test_randao": "ts-mocha \"./testjs/test_dvrandao.ts\""
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "devDependencies": {
-    "@nomiclabs/hardhat-ethers": "^2.0.6",
-    "@nomiclabs/hardhat-solpp": "^2.0.1",
-    "@nomiclabs/hardhat-waffle": "^2.0.3",
-    "@openzeppelin/contracts": "^4.6.0",
-    "@typechain/hardhat": "^6.0.0",
+    "@typechain/ethers-v5": "^10.1.0",
     "@types/mocha": "^9.1.1",
     "chai": "^4.3.6",
     "dotenv": "^16.0.1",
-    "ethereum-waffle": "^3.4.4",
-    "ethers": "^5.6.8",
-    "hardhat": "^2.9.7",
+    "ethers": "^5.6.9",
     "mocha": "^10.0.0",
     "ts-mocha": "^10.0.0",
-    "ts-node": "^10.8.0"
+    "ts-node": "^10.9.1",
+    "typechain": "^8.1.0"
   }
 }

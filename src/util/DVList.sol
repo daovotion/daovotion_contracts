@@ -1,5 +1,6 @@
 //SPDX-License-Identifier:MIT
-pragma solidity ^0.8.4;
+pragma solidity >=0.8.8;
+
 /**
 Conventions:
 - All token identifiers should be represented by uint256, as dictated by the ERC1155 standard

@@ -7,3 +7,5 @@ coverage.json
 typechain
 cache
 artifacts
+out
+package-lock.json
