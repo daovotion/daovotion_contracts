@@ -17,7 +17,7 @@ contract DVRANDAO is Ownable, ReentrancyGuard
         uint256 record_id,
         uint256 current_campaign
     );
-    event ProposalComitted(uint256 target_campaign, uint256 record_id);
+    event ProposalComitted(uint256 target_campaign, uint256 record_id, uint32 proposal_index);
     event ProposalRevealed(uint256 target_campaign, uint256 record_id);
     event ProposalRevealFailed(uint256 target_campaign, uint256 record_id);
     event ProposalFaulted(uint256 target_campaign, uint256 record_id);
@@ -45,47 +45,47 @@ contract DVRANDAO is Ownable, ReentrancyGuard
     event CampaignResolutionFailed(uint256 target_campaign);
 
     // VRF components
-	VRFCircleProblem private _circle_problem;
-	VRFLeadboard private _leadboard;
-	VRFCampaignTaskDB private _campaignDB;
-	VRFIslandDB private _islandDB;
-	VRFSignedRecordDB private _signed_recordDB;
-	// VRF State manager
+    VRFCircleProblem private _circle_problem;
+    VRFLeadboard private _leadboard;
+    VRFCampaignTaskDB private _campaignDB;
+    VRFIslandDB private _islandDB;
+    VRFSignedRecordDB private _signed_recordDB;
+    // VRF State manager
     VRFController private _controller;
 
     constructor() 
-	{
-		// initialize parameters of daostate
+    {
+        // initialize parameters of daostate
         uint256 initial_seed = uint256( keccak256(abi.encodePacked(block.timestamp, _msgSender())) );
-		
-		_circle_problem = new VRFCircleProblem(initial_seed);
-		_leadboard = new VRFLeadboard();
-		_campaignDB = new VRFCampaignTaskDB();
-		_islandDB = new VRFIslandDB();
-		_signed_recordDB = new VRFSignedRecordDB();
+        
+        _circle_problem = new VRFCircleProblem(initial_seed);
+        _leadboard = new VRFLeadboard();
+        _campaignDB = new VRFCampaignTaskDB();
+        _islandDB = new VRFIslandDB();
+        _signed_recordDB = new VRFSignedRecordDB();
 
         _controller = new VRFController(
-			address(_islandDB),
-			address(_campaignDB),
-			address(_signed_recordDB), 
-			address(_circle_problem),
-			address(_leadboard)
-		);
+            address(_islandDB),
+            address(_campaignDB),
+            address(_signed_recordDB), 
+            address(_circle_problem),
+            address(_leadboard)
+        );
 
-		// connect contracts with controller
-		address thisowner = owner();
-		_controller.assignControllerRole(thisowner);
+        // connect contracts with controller
+        address thisowner = owner();
+        _controller.assignControllerRole(thisowner);
 
-		_circle_problem.assignControllerRole(address(_controller));
-		_circle_problem.assignControllerRole(thisowner);
-		_leadboard.assignControllerRole(address(_controller));
-		_leadboard.assignControllerRole(thisowner);
-		_campaignDB.assignControllerRole(address(_controller));		
-		_campaignDB.assignControllerRole(thisowner);
-		_islandDB.assignControllerRole(address(_controller));
-		_islandDB.assignControllerRole(thisowner);
-		_signed_recordDB.assignControllerRole(address(_controller));
-		_signed_recordDB.assignControllerRole(thisowner);
+        _circle_problem.assignControllerRole(address(_controller));
+        _circle_problem.assignControllerRole(thisowner);
+        _leadboard.assignControllerRole(address(_controller));
+        _leadboard.assignControllerRole(thisowner);
+        _campaignDB.assignControllerRole(address(_controller));        
+        _campaignDB.assignControllerRole(thisowner);
+        _islandDB.assignControllerRole(address(_controller));
+        _islandDB.assignControllerRole(thisowner);
+        _signed_recordDB.assignControllerRole(address(_controller));
+        _signed_recordDB.assignControllerRole(thisowner);
 
     }
 
@@ -103,48 +103,40 @@ contract DVRANDAO is Ownable, ReentrancyGuard
         _controller.config_params(params);
     }
 
-	function get_islands_contract() external view returns (IVRFIslandDB)
-	{
-		return _islandDB;
-	}
+    function get_islands_contract() external view returns (IVRFIslandDB)
+    {
+        return _islandDB;
+    }
 
-	function get_campaigns_contract() external view returns (IVRFCampaignTaskDB)
-	{
-		return _campaignDB;
-	}
+    function get_campaigns_contract() external view returns (IVRFCampaignTaskDB)
+    {
+        return _campaignDB;
+    }
 
-	function get_records_contract() external view returns (IVRFSignedRecordDB)
-	{
-		return _signed_recordDB;
-	}
+    function get_records_contract() external view returns (IVRFSignedRecordDB)
+    {
+        return _signed_recordDB;
+    }
 
-	function get_problem_contract() external view returns (IVRFCircleProblem)
-	{
-		return _circle_problem;
-	}
+    function get_problem_contract() external view returns (IVRFCircleProblem)
+    {
+        return _circle_problem;
+    }
 
-	function get_leadboard_contract() external view returns (IVRFLeadboard)
-	{
-		return _leadboard;
-	}
+    function get_leadboard_contract() external view returns (IVRFLeadboard)
+    {
+        return _leadboard;
+    }
 
-	function get_controller_contract() external view returns(IVRFController)
-	{
-		return _controller;
-	}
+    function get_controller_contract() external view returns(IVRFController)
+    {
+        return _controller;
+    }
 
     ////////////////////////////////______End DAO Config___//////////////////////////////////
 
     ////////////////////////////////     DAO Status      //////////////////////////////////
-
-    function get_random_state()
-        external
-        view
-        returns (PCGSha256RandomState memory)
-    {
-        return _controller.get_random_state();
-    }
-
+    
     function get_random_seed() external view returns (uint256) {
         return _controller.get_random_seed();
     }
@@ -154,7 +146,7 @@ contract DVRANDAO is Ownable, ReentrancyGuard
     }
 
     function available_records() external view returns (uint256) 
-	{
+    {
         return _signed_recordDB.available_records();
     }
 
@@ -184,7 +176,7 @@ contract DVRANDAO is Ownable, ReentrancyGuard
         address prev_island_owner,
         address new_island_owner
     ) external onlyOwner 
-	{
+    {
         _islandDB.change_island_owner(
             islandID,
             prev_island_owner,
@@ -192,14 +184,14 @@ contract DVRANDAO is Ownable, ReentrancyGuard
         );
     }
 
-	/**
-	 * Withdraw payment to the caller of this functions, is
-	 */
+    /**
+     * Withdraw payment to the caller of this functions, is
+     */
     function payout_island_bounty(
         uint256 islandID,
         uint256 value
     ) external nonReentrant 
-	{
+    {
         // Verify ownership
         address src_addr = _msgSender();
 
@@ -212,7 +204,7 @@ contract DVRANDAO is Ownable, ReentrancyGuard
         }
 
         // This method reverts if src_addr is not owner of the Island
-		_islandDB.consume_island_bounty_payout(islandID, src_addr, value);
+        _islandDB.consume_island_bounty_payout(islandID, src_addr, value);
 
         // send money
         payable(src_addr).transfer(value);
@@ -238,31 +230,31 @@ contract DVRANDAO is Ownable, ReentrancyGuard
         uint256 _current_campaignID = _controller.current_campaignID();
 
         if (prev_status == eVRF_CAMPAIGN_STATUS.VRFCAMPAIGN_IDLE) 
-		{
+        {
             assert(new_status == eVRF_CAMPAIGN_STATUS.VRFCAMPAIGN_PROCESSING_PROBLEM);
             emit CampaignSolvingInit(_current_campaignID);
         }
-		else if (prev_status == eVRF_CAMPAIGN_STATUS.VRFCAMPAIGN_PROCESSING_PROBLEM)
-		{
+        else if (prev_status == eVRF_CAMPAIGN_STATUS.VRFCAMPAIGN_PROCESSING_PROBLEM)
+        {
             assert(new_status == eVRF_CAMPAIGN_STATUS.VRFCAMPAIGN_GATHERING_PROPOSALS);
             emit CampaignGatheringProposals(_current_campaignID);
         } 
-		else if (prev_status == eVRF_CAMPAIGN_STATUS.VRFCAMPAIGN_GATHERING_PROPOSALS) 
-		{
+        else if (prev_status == eVRF_CAMPAIGN_STATUS.VRFCAMPAIGN_GATHERING_PROPOSALS) 
+        {
             if (new_status == eVRF_CAMPAIGN_STATUS.VRFCAMPAIGN_GATHERING_REVEALS) 
-			{
+            {
                 emit CampaignGatheringReveals(_current_campaignID);
             }
-			else 
-			{
+            else 
+            {
                 // must restart problem again
                 assert(new_status == eVRF_CAMPAIGN_STATUS.VRFCAMPAIGN_PROCESSING_PROBLEM);
                 emit CampaignAbsenteeism(_current_campaignID);
                 emit CampaignSolvingInit(_current_campaignID);
             }
         } 
-		else 
-		{
+        else 
+        {
             // gathering reveals must be handled with special care
             assert(new_status == eVRF_CAMPAIGN_STATUS.VRFCAMPAIGN_CLOSING);
             return true;
@@ -272,12 +264,12 @@ contract DVRANDAO is Ownable, ReentrancyGuard
     }
 
     function _finish_campaign() internal
-	{
+    {
         uint256 _current_campaignID = _controller.current_campaignID();
         bool success = _controller.finalize_campaign();
 
         if (success == true) 
-		{
+        {
             // get winner campaign
             VRFCampaignTask memory finished_campaign = _campaignDB.fetch_campaign_info(_current_campaignID);
 
@@ -289,20 +281,20 @@ contract DVRANDAO is Ownable, ReentrancyGuard
             );
 
         }
-		else 
-		{
+        else 
+        {
             emit CampaignResolutionFailed(_current_campaignID);
             emit CampaignSolvingInit(_current_campaignID);
         }
 
         uint32 proposalcount = _controller.proposal_count();
         if (proposalcount > 0) 
-		{
+        {
             // The last campaign has leftovers, so punish them
             // This loop is under control, no more proposals up to max_campaign_proposals
 
             for (uint32 i = 0; i < proposalcount; i++) 
-			{
+            {
                 uint256 fault_recordID = _controller.get_proposal(i);
                 emit ProposalFaulted(_current_campaignID, fault_recordID);
             }
@@ -354,7 +346,7 @@ contract DVRANDAO is Ownable, ReentrancyGuard
      * It must pay a fee for creating a new task. This fee will be the bounty for the task.
      */
     function create_new_task(uint256 task_id)
-        public
+        external
         payable
         onlyOwner
         nonReentrant
@@ -363,7 +355,7 @@ contract DVRANDAO is Ownable, ReentrancyGuard
         uint256 valuebounty = msg.value;
 
         if (valuebounty == uint256(0)) 
-		{
+        {
             revert ErrVRF_CampaignWithoutBounty();
         }
 
@@ -380,7 +372,7 @@ contract DVRANDAO is Ownable, ReentrancyGuard
         // check status
         bool handle_closing = _check_phase_transition_event(prev_status);
         if (handle_closing == true) 
-		{
+        {
             // close campaign
             _finish_campaign();
         }
@@ -401,21 +393,20 @@ contract DVRANDAO is Ownable, ReentrancyGuard
 
     ////////////// Public         --------------------///
 
-    function insert_record_own(
+    function _insert_record_paid(
         uint256 islandID,
-		address src_addr,
+        address src_addr,
+        uint256 valuefee,
         bytes32 signature_r,
         bytes32 signature_s,
         uint8 parity_v
-    ) public payable onlyOwner nonReentrant returns (uint256) 
-	{
-        // Verify ownership        
-        uint256 valuefee = msg.value;
+    ) internal nonReentrant returns (uint256) 
+    {
 
         eVRF_CAMPAIGN_STATUS prev_status = _controller.get_campaign_phase();
-		uint256 _current_campaignID = _controller.current_campaignID();
+        uint256 _current_campaignID = _controller.current_campaignID();
         
-		// This method checks ownership of Island
+        // This method checks ownership of Island
         uint256 ret_record = _controller.insert_record_payable(
             block.timestamp,
             islandID,
@@ -443,32 +434,43 @@ contract DVRANDAO is Ownable, ReentrancyGuard
         return ret_record;
     }
 
-	function insert_record(
-        uint256 islandID,		
+    function insert_record_own(
+        uint256 islandID,
+        address src_addr,
+        bytes32 signature_r,
+        bytes32 signature_s,
+        uint8 parity_v
+    ) external payable onlyOwner returns (uint256) 
+    {
+        // Verify ownership        
+        uint256 valuefee = msg.value;
+        return _insert_record_paid(islandID, src_addr, valuefee, signature_r, signature_s, parity_v);
+    }
+
+    function insert_record(
+        uint256 islandID,        
         bytes32 signature_r,
         bytes32 signature_s,
         uint8 parity_v
     ) external payable returns (uint256) 
-	{
-		return this.insert_record_own{value:msg.value}(
-			islandID, msg.sender, signature_r, signature_s, parity_v
-		);
-	}
+    {
+        return _insert_record_paid(islandID, msg.sender, msg.value, signature_r, signature_s, parity_v);
+    }
 
     /**
      * This method consumes the bonus of the Island
      */
-    function insert_record_bonus_own(
+    function _insert_record_using_bonus(
         uint256 islandID,
-		address src_addr,
+        address src_addr,
         bytes32 signature_r,
         bytes32 signature_s,
         uint8 parity_v
-    ) public onlyOwner nonReentrant returns (uint256) 
-	{        
+    ) internal nonReentrant returns (uint256) 
+    {        
         eVRF_CAMPAIGN_STATUS prev_status = _controller.get_campaign_phase();
-		
-		uint256 _current_campaignID = _controller.current_campaignID();
+        
+        uint256 _current_campaignID = _controller.current_campaignID();
      
         uint256 ret_record = _controller.insert_record_by_bonus(
             block.timestamp,
@@ -496,29 +498,38 @@ contract DVRANDAO is Ownable, ReentrancyGuard
         return ret_record;
     }
 
-	function insert_record_bonus(
+    function insert_record_bonus_own(
+        uint256 islandID,
+        address src_addr,
+        bytes32 signature_r,
+        bytes32 signature_s,
+        uint8 parity_v
+    ) external onlyOwner returns (uint256) 
+    {        
+        return _insert_record_using_bonus(islandID, src_addr, signature_r, signature_s, parity_v);
+    }
+
+    function insert_record_bonus(
         uint256 islandID,
         bytes32 signature_r,
         bytes32 signature_s,
         uint8 parity_v
     ) external returns (uint256) 
-	{
-		return this.insert_record_bonus_own(
-			islandID, msg.sender, signature_r, signature_s, parity_v
-		);
-	}
+    {
+        return _insert_record_using_bonus(islandID, msg.sender, signature_r, signature_s, parity_v);
+    }
 
     /**
      * This method only could be called when solving a problem
      */
-    function insert_record_solving_own(
+    function _insert_record_solving_problem(
         uint256 islandID,
-		address src_addr,
+        address src_addr,
         bytes32 signature_r,
         bytes32 signature_s,
         uint8 parity_v
-    ) public onlyOwner nonReentrant returns (uint256) 
-	{
+    ) internal nonReentrant returns (uint256) 
+    {
         eVRF_CAMPAIGN_STATUS prev_status = _controller.get_campaign_phase();
 
         uint256 ret_record = _controller.insert_record_problem_working(
@@ -530,7 +541,7 @@ contract DVRANDAO is Ownable, ReentrancyGuard
             parity_v
         );
 
-		emit NewRecordSigned(
+        emit NewRecordSigned(
             src_addr,
             islandID,
             ret_record,
@@ -543,54 +554,71 @@ contract DVRANDAO is Ownable, ReentrancyGuard
         return ret_record;
     }
 
-	function insert_record_solving(
+    /**
+     * This method only could be called when solving a problem
+     */
+    function insert_record_solving_own(
+        uint256 islandID,
+        address src_addr,
+        bytes32 signature_r,
+        bytes32 signature_s,
+        uint8 parity_v
+    ) external onlyOwner returns (uint256) 
+    {
+        return _insert_record_solving_problem(islandID, src_addr, signature_r, signature_s, parity_v);
+    }
+
+    function insert_record_solving(
         uint256 islandID,
         bytes32 signature_r,
         bytes32 signature_s,
         uint8 parity_v
     ) external returns (uint256) 
-	{
-		return this.insert_record_solving_own(
-        	islandID, msg.sender, signature_r, signature_s, parity_v
-		);
-	}
+    {
+        return _insert_record_solving_problem(islandID, msg.sender, signature_r, signature_s, parity_v);
+    }
 
 
     /// Signed record proposals
-    function commit_proposal_own(uint256 recordID, address src_addr) public onlyOwner nonReentrant 
-	{
+    function _commit_proposal(uint256 recordID, address src_addr) internal nonReentrant 
+    {
         eVRF_CAMPAIGN_STATUS prev_status = _controller.get_campaign_phase();
-		uint256 _current_campaignID = _controller.current_campaignID();        
+        uint256 _current_campaignID = _controller.current_campaignID();        
 
-        _controller.commit_proposal(src_addr, recordID, block.timestamp);
+        uint32 proposal_index = _controller.commit_proposal(src_addr, recordID, block.timestamp);
 
-        emit ProposalComitted(_current_campaignID, recordID);
+        emit ProposalComitted(_current_campaignID, recordID, proposal_index);
 
         // check status
         _check_phase_transition_event(prev_status);
     }
 
+    function commit_proposal_own(uint256 recordID, address src_addr) external onlyOwner
+    {
+        _commit_proposal(recordID, src_addr);
+    }
 
-	function commit_proposal(uint256 recordID) external
-	{
-		this.commit_proposal_own(recordID, msg.sender);
-	} 
+
+    function commit_proposal(uint256 recordID) external
+    {
+        _commit_proposal(recordID, msg.sender);
+    } 
 
 
     /**
      * If failed to reveal solution returns negative (-1).
      * Otherwise return the leadboard score: 1 - First. 2 - Second, 3 - third.
      */
-    function reveal_proposal_own(
+    function _reveal_proposal(
         uint256 recordID,
-		address src_addr,
+        address src_addr,
         int64 cx,
         int64 cy,
         int64 radius
-    ) public onlyOwner nonReentrant returns (int32)
-	{
+    ) internal nonReentrant returns (int32)
+    {
         eVRF_CAMPAIGN_STATUS prev_status = _controller.get_campaign_phase();
-		uint256 _current_campaignID = _controller.current_campaignID();        
+        uint256 _current_campaignID = _controller.current_campaignID();        
 
         int32 score = 0;
         bool isvalid = _controller.validate_proposal_integrity(
@@ -600,24 +628,24 @@ contract DVRANDAO is Ownable, ReentrancyGuard
             cy,
             radius
         );
-		
+        
         if (isvalid == false) {
             _controller.punish_failed_reveal(recordID);
             score = -1;
         }
-		else 
-		{
+        else 
+        {
             // commit reveal
             score = _controller.reveal_proposal(recordID, src_addr, cx, cy, radius);
         }
 
         // raise event
         if (score < 0) 
-		{
+        {
             emit ProposalRevealFailed(_current_campaignID, recordID);
         }
-		else 
-		{
+        else 
+        {
             emit ProposalRevealed(_current_campaignID, recordID);
         }
 
@@ -627,7 +655,7 @@ contract DVRANDAO is Ownable, ReentrancyGuard
         // check status
         bool handle_closing = _check_phase_transition_event(prev_status);
         if (handle_closing == true) 
-		{
+        {
             // close campaign
             _finish_campaign();
         }
@@ -635,15 +663,30 @@ contract DVRANDAO is Ownable, ReentrancyGuard
         return score;
     }
 
-	function reveal_proposal(
+    /**
+     * If failed to reveal solution returns negative (-1).
+     * Otherwise return the leadboard score: 1 - First. 2 - Second, 3 - third.
+     */
+    function reveal_proposal_own(
+        uint256 recordID,
+        address src_addr,
+        int64 cx,
+        int64 cy,
+        int64 radius
+    ) external onlyOwner returns (int32)
+    {
+        return _reveal_proposal(recordID, src_addr, cx, cy, radius);
+    }
+
+    function reveal_proposal(
         uint256 recordID,
         int64 cx,
         int64 cy,
         int64 radius
     ) external returns (int32)
-	{
-		return this.reveal_proposal_own(recordID, msg.sender, cx, cy, radius);
-	}
+    {
+        return _reveal_proposal(recordID, msg.sender, cx, cy, radius);
+    }
 
     ////////////////////////////////______Ending__Proposal___//////////////////////////////////
 
@@ -651,13 +694,16 @@ contract DVRANDAO is Ownable, ReentrancyGuard
 
     /**
      * This method needs to be called by client before attempting to insert new signed records on current campaign.
-     * Returns the campaign ID and the index for the next record.
-     * If island_tokenID is not allowed to register more records, it returns (0, INVALID_INDEX32)
-     * See also VRFDAOLib.calc_record_params_hash
+     * Returns the tuple with the 3 following fields:     
+     * ( uint256(campaignID), uint32(island_index), uint256(storage_fee)).     
+     * Where storage_fee tells if client could mint new records for free (with value 0, for contributing for the problem creation), 
+     * or spending bonus credit (with value 1), or the actual fee that client has to pay.
+     * If island_tokenID is not allowed to register more records, it returns (0, INVALID_INDEX32,0)
+     * See also VRFSignedRecordLib.calc_record_params_hash
      */
     function suggested_record_indexparams(uint256 island_tokenID)
         external view
-        returns (uint256, uint32)
+        returns (uint256, uint32, uint256)
     {
         return _controller.suggested_record_indexparams(island_tokenID);
     }
@@ -672,7 +718,7 @@ contract DVRANDAO is Ownable, ReentrancyGuard
         int64 cy,
         int64 radius
     ) external view returns (bytes32) 
-	{
+    {
         return  _controller.digital_record_signature_helper(islandID, cx, cy, radius);
     }
 
@@ -683,7 +729,7 @@ contract DVRANDAO is Ownable, ReentrancyGuard
         int64 cy,
         int64 radius
     ) external view returns (bool) 
-	{
+    {
         return _signed_recordDB.is_valid_record_signature(
                 recordID,
                 pk_owner,

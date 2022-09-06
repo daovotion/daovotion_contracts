@@ -55,7 +55,7 @@ library VRFSignedRecordLib
     */
 	function calc_record_params_buffer(uint256 islandID, uint256 campaingID, uint32 island_campaign_index, int64 cx, int64 cy, int64 radius) internal pure returns(bytes memory)
 	{
-		return abi.encodePacked(islandID, campaingID, island_campaign_index, cx,  cy, radius);
+		return abi.encode(islandID, campaingID, island_campaign_index, cx,  cy, radius);
 	}
 
    	/**
