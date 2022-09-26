@@ -207,7 +207,17 @@ contract DVRANDAO is Ownable, ReentrancyGuard
         _islandDB.consume_island_bounty_payout(islandID, src_addr, value);
 
         // send money
-        payable(src_addr).transfer(value);
+
+        Address.sendValue(payable(src_addr), value);
+    }
+
+    /**
+     * Punish island reputation and clears its bounty balance.
+     * Reclaims the  last bounty balance, which will be accounted to accumulated bounty treasury 
+     */
+    function punish_island_reputation(uint256 islandID) external onlyOwner
+    {
+        _controller.punish_island_reputation(islandID);
     }
 
     ////////////////////////////////______Ending__Island____//////////////////////////////////

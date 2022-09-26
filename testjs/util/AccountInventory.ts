@@ -20,9 +20,9 @@ interface ITxResult
 
 class SignedRecord
 {
-	public recordID:BigNumber;
-	public entry:SignedRecordEntry;
-	public proposal_index:number;
+    public recordID:BigNumber;
+    public entry:SignedRecordEntry;
+    public proposal_index:number;
     
     constructor()
     {
@@ -153,8 +153,8 @@ interface IRecordIslandTxResult
 
 class IslandRecordSet
 {
-	islandID:BigNumber;
-	records:Array<SignedRecord>;
+    islandID:BigNumber;
+    records:Array<SignedRecord>;
 
     constructor(island_id:BigNumber)
     {
@@ -363,7 +363,7 @@ class AccountInventory
         this.accounts = new RandomAccounts();
         this.problem_simulation = new simulation.VRFCircleProblem();
         const rnd_data_bytes = ethers.utils.randomBytes(32);
-		this.rng_seed = BigNumber.from(rnd_data_bytes).toBigInt();
+        this.rng_seed = BigNumber.from(rnd_data_bytes).toBigInt();
     }
 
     async generate_accounts_and_islands(

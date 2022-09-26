@@ -215,6 +215,13 @@ interface IVRFController is IERC165
      */
     function punish_failed_reveal(uint256 recordID) external;
 
+
+    /**
+     * Punish island reputation and clears its bounty balance.
+     * Reclaims the  last bounty balance, which will be accounted to accumulated bounty treasury 
+     */
+    function punish_island_reputation(uint256 islandID) external;
+
     /**
      * This method has to be called after validate_proposal_integrity().
      * Returns the Leaderboard ranking (1 -> first place; 2 -> second; 3 -> third).
@@ -255,7 +262,7 @@ interface IVRFController is IERC165
 }
 
 /// Implementation of IVRFController
-contract VRFController is IVRFController, ERC165, DVControlable 
+contract VRFController is IVRFController, ERC165, DVControllable 
 {
     IVRFIslandDB private _islandDB;
     IVRFCampaignTaskDB private _campaignDB;
@@ -300,7 +307,7 @@ contract VRFController is IVRFController, ERC165, DVControlable
     /**
     * Proposals are identifiers to signed records
     */
-       DVStackArray private _proposals;
+    DVStackArray private _proposals;
 
 
     constructor(
@@ -905,8 +912,8 @@ contract VRFController is IVRFController, ERC165, DVControlable
 
         // check campaign phase
         _check_campaign_phase(blocktime);
-		
-		return prop_index;
+        
+        return prop_index;
     }
 
     /**
@@ -969,6 +976,11 @@ contract VRFController is IVRFController, ERC165, DVControlable
         // remove proposal        
         _remove_proposal(proposal_index, false);
     }
+
+    function punish_island_reputation(uint256 islandID) external virtual override onlyOwner
+    {
+        _accumulated_fee_bounty += _islandDB.punish_island_reputation(islandID);
+    }    
 
     /**
      * This method has to be called after validate_proposal_integrity().

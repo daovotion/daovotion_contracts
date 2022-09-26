@@ -1,8 +1,6 @@
 //SPDX-License-Identifier:MIT
 pragma solidity >=0.8.8;
 
-uint256 constant DV_PERCENTAJE_FACTOR = 10000;
-
 // VRF Fix point
 uint32 constant DV_FIX64_FRACBITS = 32;
 int64 constant DV_FIX64_NAN = -0x7fffffffffffffff;
